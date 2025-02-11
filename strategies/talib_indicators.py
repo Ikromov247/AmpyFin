@@ -6,9 +6,12 @@ import time
 import sys
 sys.path.append('..')
 from control import trade_asset_limit
-def get_data(ticker, mongo_client, period=None, start_date=None, end_date=None): 
 
+
+
+def get_data(ticker, mongo_client, period=None, start_date=None, end_date=None): 
    """Retrieve historical data for a given ticker."""  
+
    if period is not None:
       data = None
       while data is None:
@@ -43,7 +46,8 @@ def get_data(ticker, mongo_client, period=None, start_date=None, end_date=None):
       except Exception as e:
          print(f"Error fetching data for {ticker}: {e}")
          time.sleep(10)
-  
+
+
 def simulate_strategy(strategy, ticker, current_price, historical_data, account_cash, portfolio_qty, total_portfolio_value):
    max_investment = total_portfolio_value * trade_asset_limit
    action = strategy(ticker, historical_data)
@@ -51,7 +55,7 @@ def simulate_strategy(strategy, ticker, current_price, historical_data, account_
    if action == 'Buy':
       return 'buy', min(int(max_investment // current_price), int(account_cash // current_price))
    elif action == 'Sell' and portfolio_qty > 0:
-      return 'sell', min(portfolio_qty, max(1, int(portfolio_qty * 0.5)))
+      return 'sell', min(portfolio_qty, max(1, int(portfolio_qty * 0.5))) # sell half of the portfolio
    else:
       return 'hold', 0
 
@@ -61,6 +65,9 @@ def BBANDS_indicator(ticker, data):
    """Bollinger Bands (BBANDS) indicator."""  
       
    upper, middle, lower = ta.BBANDS(data['Close'], timeperiod=20)  
+   # sells when the current price is above the upper band
+   # and buys when the current price is below the lower band
+   # otherwise, hold
    if data['Close'].iloc[-1] > upper.iloc[-1]:  
       return 'Sell'  
    elif data['Close'].iloc[-1] < lower.iloc[-1]:  

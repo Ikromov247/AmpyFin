@@ -141,6 +141,7 @@ indicator_periods = {
     "TSF_indicator": "2y",
     "VAR_indicator": "2y",
    }
+
 def insert_rank_to_coefficient(i):
    try:
       client = MongoClient(mongo_url)  

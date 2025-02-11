@@ -1,0 +1,4 @@
+1. Modularize the code better
+2. dependency injection for trading data. 
+Expected result is that the trading data can be swapped out for a different data source easily. 
+Also it should enable us to use local data for testing.

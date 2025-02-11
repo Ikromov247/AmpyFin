@@ -1,3 +1,5 @@
+import warnings
+
 from polygon import RESTClient
 from config import POLYGON_API_KEY, FINANCIAL_PREP_API_KEY, MONGO_DB_USER, MONGO_DB_PASS, API_KEY, API_SECRET, BASE_URL, mongo_url
 import threading
@@ -67,7 +69,7 @@ import json
 
 def process_ticker(ticker, mongo_client):
    try:
-      
+      # fetch current price
       current_price = None
       
       while current_price is None:
@@ -79,6 +81,9 @@ def process_ticker(ticker, mongo_client):
       
       indicator_tb = mongo_client.IndicatorsDatabase
       indicator_collection = indicator_tb.Indicators
+
+      # for each strategy, fetch historical data?
+
       for strategy in strategies:
          historical_data = None
          while historical_data is None:
@@ -101,7 +106,7 @@ def process_ticker(ticker, mongo_client):
 
          
          portfolio_qty = strategy_doc["holdings"].get(ticker, {}).get("quantity", 0)
-
+         # simulate trade
          simulate_trade(ticker, strategy, historical_data, current_price,
                         account_cash, portfolio_qty, total_portfolio_value, mongo_client)
          
@@ -432,7 +437,7 @@ def main():
       """
       initialize
       """
-      ticker_price_history = {}
+      ticker_price_history: dict[str, pd.DataFrame] = {}
       trading_simulator = {}
       points = {}
       """
@@ -470,7 +475,12 @@ def main():
       end_date = datetime.strptime(period_end, "%Y-%m-%d")
       current_date = start_date
       
-      def get_historical_data(ticker, current_date, period):
+      def get_historical_data(ticker:str, current_date:datetime, period:str)->pd.DataFrame:
+         """
+         get historical data for the given ticker
+         the period starts from the current date minus the period (e.g. 2 months)
+         until the current date
+         """
          period_start_date = {
                "1mo": current_date - timedelta(days=30),
                "3mo": current_date - timedelta(days=90),
@@ -490,41 +500,53 @@ def main():
                update portfolio value here
                """
                amount = 0
+               # for each holding in each strategy
                for ticker in trading_simulator[strategy.__name__]["holdings"]:
+                  # get the current price of the ticker,
+                  # and calculate the current value of the holding
                   qty = trading_simulator[strategy.__name__]["holdings"][ticker]["quantity"]
                   current_price = ticker_price_history[ticker].loc[current_date.strftime('%Y-%m-%d')]["Close"]
                   amount += qty * current_price
+               # add the cash to the portfolio value
                cash = trading_simulator[strategy.__name__]["amount_cash"]
                trading_simulator[strategy.__name__]["portfolio_value"] = amount + cash
+               # if the portfolio value is not 50000, then we have an active strategy
                if trading_simulator[strategy.__name__]["portfolio_value"] != 50000:
                   active_count += 1
          return active_count
+      
       while current_date <= end_date:
          print(f"Simulating strategies for date: {current_date.strftime('%Y-%m-%d')}")
+         # if the current date is a weekend, then we skip the day
          if current_date.weekday() >= 5:
             current_date += timedelta(days=1)
             continue
+         # if the current day is not in the ticker price history, then we skip the day
+         # possibly that day is a holiday
+         # for some reason, the code only checks the first ticker in train_tickers
          if current_date.strftime('%Y-%m-%d') not in ticker_price_history[train_tickers[0]].index:
             current_date += timedelta(days=1)
             continue
+         # for each ticker in train_tickers, we simulate the strategy
          for ticker in train_tickers:
                """
                what we need to simulate:
                1. strategy - completed
                2. historical data - must give historical data that is ideal period days/months/years before the current date to current date
-               3. current_price - get from trading simulator
+               3. current_price - get from trading_simulator
                4. account_cash - get from trading_simulator
                5. holdings - get from trading_simulator
                6. total_portfolio_value
                """
                if current_date.strftime('%Y-%m-%d') in ticker_price_history[ticker].index:
-                  daily_data = ticker_price_history[ticker].loc[current_date.strftime('%Y-%m-%d')]
-                  current_price = daily_data['Close']
+                  daily_data = ticker_price_history[ticker].loc[current_date.strftime('%Y-%m-%d')] # todays data
+                  current_price = daily_data['Close'] # current price
                   for strategy in strategies:
                      historical_data = get_historical_data(ticker, current_date, ideal_period[strategy.__name__])
                      account_cash = trading_simulator[strategy.__name__]["amount_cash"]
+                     # get how many shares this strategy has for this ticker
                      portfolio_qty = trading_simulator[strategy.__name__]["holdings"].get(ticker, {}).get("quantity", 0)
-                     total_portfolio_value = trading_simulator[strategy.__name__]["portfolio_value"]
+                     total_portfolio_value = trading_simulator[strategy.__name__]["portfolio_value"] # total portfolio value which includes cash
                      decision, qty = simulate_strategy(
                            strategy, ticker, current_price, historical_data, account_cash, portfolio_qty, total_portfolio_value
                      )
@@ -557,7 +579,7 @@ def main():
                         if trading_simulator[strategy.__name__]["holdings"][ticker]["quantity"] == 0:
                            del trading_simulator[strategy.__name__]["holdings"][ticker]
                         elif trading_simulator[strategy.__name__]["holdings"][ticker]["quantity"] < 0:
-                           Exception("Quantity cannot be negative")
+                           warnings.warn("Quantity cannot be negative")
                         trading_simulator[strategy.__name__]["total_trades"] += 1
          active_count = update_portfolio_values(current_date) 
          """
